@@ -75,7 +75,7 @@ class Thumbnail_Plugin implements Typecho_Plugin_Interface {
         $options = Typecho_Widget::widget('Widget_Options');
         //来源地址
         $image = array();
-        if (FALSE != $image_info = self::fetchImageInfo($src)) {
+        if (FALSE != $image_info = self::fetchImageInfo($src, $mime)) {
             $ext = pathinfo($image_info['path']);
             $file_name = $ext['dirname'] . "/" . $ext['filename'] . "_" . $size . "_" . md5($image_info['name'] . $size) . "." . $ext['extension'];
             if (file_exists(__TYPECHO_ROOT_DIR__ . $file_name)) {
@@ -116,10 +116,26 @@ class Thumbnail_Plugin implements Typecho_Plugin_Interface {
      * @param type  $src
      * @return array $img
      */
-    public function fetchImageInfo($src) {
+    public function fetchImageInfo($src, $mime) {
         if (is_numeric($src)) {
-            return self::fetchAttachment($src);
+            $image = self::fetchAttachment($src, $mime);
+            if (!$image['width']) {
+                $info = self::getImageSize($image['path']);
+                $image['width'] = $info['width'];
+                $image['height'] = $info['width'];
+            }
+            return $image;
         }
+        return self::getImageSize($src);
+    }
+
+    /**
+     * 从文件中获取图片信息
+     * 
+     * @param type $src
+     * @return boolean
+     */
+    public function getImageSize($src) {
         $first = substr($src, 0, 1);
         if ('.' == $first) {
             $src = __TYPECHO_ROOT_DIR__ . substr($src, 1);
@@ -163,7 +179,7 @@ class Thumbnail_Plugin implements Typecho_Plugin_Interface {
      * @param type $cid 文章id
      * @return boolean or array $info 图像信息
      */
-    private function fetchAttachment($cid) {
+    private function fetchAttachment($cid, $mime) {
         $db = Typecho_Db::get();
         $attachs = $db->fetchAll($db->select("title,slug,text")->from('table.contents')
                         ->where('type = ? AND parent = ? ', 'attachment', (int) $cid)
@@ -175,7 +191,7 @@ class Thumbnail_Plugin implements Typecho_Plugin_Interface {
         $info = array();
         foreach ($attachs as $val) {
             $text = unserialize($val['text']);
-            if ($text['isImage']) {
+            if ($text['isImage'] || self::checkImageMime($text, $mime)) {
                 $info = $text;
             }break;
         }
@@ -230,7 +246,7 @@ class Thumbnail_Plugin implements Typecho_Plugin_Interface {
      * @param type $size
      * @return type
      */
-    public function createThumb(&$data, $size, $crop) {
+    public function createThumb($data, $size, $crop) {
         $thumb_size = self::calcImagethumbSize($data, $size);
         //无正确尺寸 返回原图
         $image = array(
